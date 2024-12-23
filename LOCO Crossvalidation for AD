@@ -1,0 +1,101 @@
+from sklearn.model_selection import LeaveOneGroupOut, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
+from imblearn.over_sampling import SMOTE
+import pandas as pd
+import numpy as np
+
+# Load the dataset
+file_path = r"C:\\Users\\brand\\Desktop\\PyCharm Community Edition 2024.3\\Biomarkers\\AD_combined_filtered_species.csv"
+data = pd.read_csv(file_path)
+
+# Define features (X), target (y), and groups (SubjectID)
+X = data.drop(columns=['label', 'SubjectID', 'Source'])
+y = data['label']
+groups = data['SubjectID']
+
+# Perform Grid Search on the entire dataset
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [5, 10, 15],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4],
+    'max_features': ['sqrt', 'log2']
+}
+
+grid_search = GridSearchCV(
+    RandomForestClassifier(random_state=42),
+    param_grid,
+    cv=5,  # Cross-validation within the grid search
+    scoring='roc_auc',
+    n_jobs = -1
+)
+grid_search.fit(X, y)
+best_params = grid_search.best_params_
+print("Best Parameters from Grid Search:", best_params)
+
+# Use these parameters for all folds in LOSO-CV
+optimized_rf_classifier = RandomForestClassifier(**best_params, random_state=42)
+
+# Initialize Leave-One-Group-Out cross-validator
+logo = LeaveOneGroupOut()
+
+# Perform LOSO-CV
+y_true = []
+y_pred = []
+y_probs = []
+fold_accuracies = []
+
+for train_idx, test_idx in logo.split(X, y, groups=groups):
+    # Split data into training and testing
+    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+
+    # Apply SMOTE to the training data
+    smote = SMOTE(random_state=42)
+    X_train_sm, y_train_sm = smote.fit_resample(X_train, y_train)
+
+    # Train the model
+    optimized_rf_classifier.fit(X_train_sm, y_train_sm)
+
+    # Predict on the test set
+    y_pred_fold = optimized_rf_classifier.predict(X_test)
+    y_probs_fold = optimized_rf_classifier.predict_proba(X_test)[:, 1]
+
+    y_pred.extend(y_pred_fold)
+    y_true.extend(y_test)
+    y_probs.extend(y_probs_fold)
+
+    # Calculate accuracy for this fold
+    accuracy = accuracy_score(y_test, y_pred_fold)
+    fold_accuracies.append(accuracy)
+
+    # Log fold-specific results
+    print(f"Test Subject: {groups.iloc[test_idx].unique()}, Accuracy: {accuracy}")
+
+# Print best parameters for reference
+print("\nBest Parameters Used for Random Forest:", best_params)
+loocv_accuracy = np.mean(accuracy)
+classification_rep = classification_report(y_true, y_pred, zero_division=0)
+# Feature Importance
+importances = optimized_rf_classifier.feature_importances_
+feature_names = X.columns
+importance_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances})
+print("\nTop 10 Most Important Features:")
+print(importance_df.sort_values(by='Importance', ascending=False).head(10))
+
+# Summary of results
+print("\nOverall Results:")
+print("Fold Accuracies:", fold_accuracies)
+print("Mean Accuracy:", np.mean(fold_accuracies))
+print("Standard Deviation of Accuracy:", np.std(fold_accuracies))
+
+# Evaluate the model
+print("\nClassification Report:")
+print(classification_report(y_true, y_pred, target_names=["Non-AD", "AD"]))
+
+# Calculate ROC-AUC
+roc_auc = roc_auc_score(y_true, y_probs)
+print(f"ROC-AUC Score: {roc_auc}")
+
+
