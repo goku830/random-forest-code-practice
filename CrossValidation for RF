@@ -99,3 +99,91 @@ importance_df = pd.DataFrame({
 
 # Display the top 10 features
 print("Top 10 Features Linked to AD:\n", importance_df.head(10))
+
+# Cross Validation 
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+from imblearn.over_sampling import SMOTE
+from sklearn.metrics import accuracy_score
+
+# File path to the dataset
+file_path = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers\AD_combined_filtered_species.csv"
+
+# Load the dataset
+AD_combined_filtered = pd.read_csv(file_path)
+
+# Display dataset details
+print("First 30 rows of the dataset:")
+print(AD_combined_filtered.head(30))
+print("\nColumn names:")
+print(AD_combined_filtered.columns)
+print("\nLabel distribution:")
+print(AD_combined_filtered['label'].value_counts())
+
+# Define features (X) and target (y)
+X = AD_combined_filtered.drop(columns=['label', 'SubjectID', 'Source'])
+y = AD_combined_filtered['label']
+
+# Check data types
+print("\nFeature data types:")
+print(X.dtypes)
+
+# Split data into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+print("\nTraining set shape:", X_train.shape)
+print("Test set shape:", X_test.shape)
+
+# Apply SMOTE for oversampling
+smote = SMOTE(random_state=42)
+X_sm, y_sm = smote.fit_resample(X, y)
+print("\nLabel distribution after SMOTE:")
+print(pd.Series(y_sm).value_counts())
+
+# Initialize the optimized RandomForestClassifier
+optimized_rf_classifier = RandomForestClassifier(
+    bootstrap=True,
+    max_depth=10,
+    max_features='sqrt',
+    min_samples_leaf=2,
+    min_samples_split=5,
+    n_estimators=100,
+    random_state=42
+)
+
+# Perform Stratified K-Fold cross-validation
+stratified_kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+cv_scores = cross_val_score(optimized_rf_classifier, X_sm, y_sm, cv=stratified_kfold, scoring='accuracy')
+
+# Display cross-validation results
+print("\nCross-Validation Scores:", cv_scores)
+print("Mean Cross-Validation Accuracy:", np.mean(cv_scores))
+
+# Display fold details
+for fold_idx, (train_indices, test_indices) in enumerate(stratified_kfold.split(X, y)):
+    print(f"\nFold {fold_idx + 1}:")
+    print("Train Indices:", train_indices)
+    print("Test Indices:", test_indices)
+    print("Test Data:\n", X.iloc[test_indices])
+    print("Labels:\n", y.iloc[test_indices])
+
+# Train the optimized model on the entire dataset after SMOTE
+optimized_rf_classifier.fit(X_sm, y_sm)
+
+# Extract and display feature importances
+feature_importances_optimized = optimized_rf_classifier.feature_importances_
+importance_df_optimized = pd.DataFrame({
+    'Feature': X.columns,
+    'Importance': feature_importances_optimized
+}).sort_values(by='Importance', ascending=False)
+
+print("\nTop 10 Features Linked to AD (Optimized Model):")
+print(importance_df_optimized.head(10))
+
+
+
+
+
+
+
