@@ -77,4 +77,4 @@ importance_df_optimized = pd.DataFrame({
 }).sort_values(by='Importance', ascending=False)
 
 print("\nTop 10 Features Linked to AD (Optimized Model):")
-print(importance_df_optimized.head(10)
+print(importance_df_optimized.head(10))
