@@ -1,0 +1,104 @@
+print("\nRunning Nested CV...")
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV, KFold
+from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
+from sklearn.feature_selection import VarianceThreshold
+from imblearn.over_sampling import SMOTE
+
+# Load the dataset
+file_path = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers\PD_combined_filtered_species.csv"
+PD_combined_filtered = pd.read_csv(file_path)
+
+# Define features (X), target (y), and groups (SubjectID for tracking)
+X = PD_combined_filtered.drop(columns=['label', 'SubjectID'])
+y = PD_combined_filtered['label']
+subject_ids = PD_combined_filtered['SubjectID']
+
+# Preprocess: Remove zero-variance features
+vt = VarianceThreshold(threshold=0.0)
+X = vt.fit_transform(X)
+
+# Nested CV setup
+outer_cv = KFold(n_splits=5, shuffle=True, random_state=42)  # Outer loop
+inner_cv = KFold(n_splits=3, shuffle=True, random_state=42)  # Inner loop for hyperparameter tuning
+
+# Define hyperparameter grid
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [3, 10, 15],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4],
+    'max_features': ['sqrt', 'log2']
+}
+
+# Initialize variables to store results
+outer_scores = []
+y_true_all = []
+y_pred_all = []
+test_subjects_all = []  # To store subject IDs for the test set
+
+for train_idx, test_idx in outer_cv.split(X):
+    # Split data into outer train and test sets
+    X_train, X_test = X[train_idx], X[test_idx]
+    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+    test_subjects = subject_ids.iloc[test_idx].values
+    test_subjects_all.extend(test_subjects)
+
+    # Inner loop: Hyperparameter tuning using GridSearchCV
+    grid_search = GridSearchCV(
+        RandomForestClassifier(random_state=42),
+        param_grid,
+        cv=inner_cv,  # Inner loop CV
+        scoring='roc_auc',
+        n_jobs=-1
+    )
+    grid_search.fit(X_train, y_train)
+
+    # Train model with the best hyperparameters on outer training set
+    best_model = grid_search.best_estimator_
+
+    # Apply SMOTE on outer training data if needed
+    smote = SMOTE(random_state=42, k_neighbors=5)
+    try:
+        X_train_sm, y_train_sm = smote.fit_resample(X_train, y_train)
+    except Exception as e:
+        print(f"SMOTE failed: {e}")
+        X_train_sm, y_train_sm = X_train, y_train
+
+    best_model.fit(X_train_sm, y_train_sm)
+
+    # Test model on outer test set
+    y_pred = best_model.predict(X_test)
+    y_true_all.extend(y_test)
+    y_pred_all.extend(y_pred)
+
+    # Calculate outer loop accuracy
+    accuracy = accuracy_score(y_test, y_pred)
+    outer_scores.append(accuracy)
+
+    print(f"Outer Fold Accuracy: {accuracy:.4f}")
+    print(f"Test Subjects: {test_subjects}")
+    print(f"Best Parameters: {grid_search.best_params_}")
+
+# Evaluate overall performance
+mean_accuracy = np.mean(outer_scores)
+std_accuracy = np.std(outer_scores)
+roc_auc = roc_auc_score(y_true_all, y_pred_all)
+
+print("\nNested CV Results:")
+print(f"Mean Accuracy: {mean_accuracy:.4f}")
+print(f"Standard Deviation: {std_accuracy:.4f}")
+print(f"ROC AUC: {roc_auc:.4f}")
+print("\nClassification Report:")
+print(classification_report(y_true_all, y_pred_all, target_names=["Non-PD", "PD"]))
+
+# Associate predictions with subject IDs
+results_df = pd.DataFrame({
+    'SubjectID': test_subjects_all,
+    'True Label': y_true_all,
+    'Predicted Label': y_pred_all
+})
+print("\nResults by Subject:")
+print(results_df)
