@@ -1,58 +1,68 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
+from imblearn.over_sampling import SMOTE
+import numpy as np
 
+# Load the dataset
+file_path = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers\biomarker_all_values_comparison_with_subject_id.csv"
+data = pd.read_csv(file_path)
 
-# File paths
-ad_file_path = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers\AD_combined_filtered_species.csv"
-cte_file_path = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers\CTE_combined_filtered_species.csv"
-output_dir = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers"
+# Derive the Dataset column from SubjectID (e.g., "Alz_" implies AD, others CTE)
+data['Dataset'] = data['SubjectID'].apply(lambda x: 'AD' if 'Alz_' in x else 'CTE')
 
+# Drop SubjectID and Dataset to create feature set; use Dataset as the target variable
+X = data.drop(columns=['SubjectID', 'Dataset'])
+y = data['Dataset'].map({'AD': 0, 'CTE': 1})  # Encode target: 0 = AD, 1 = CTE
 
-# Load datasets
-ad_data = pd.read_csv(ad_file_path)
-cte_data = pd.read_csv(cte_file_path)
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-# Exclude unnecessary columns
-columns_to_exclude = ['Source', 'label', 'SubjectID']
-ad_data_filtered = ad_data.drop(columns=[col for col in columns_to_exclude if col in ad_data.columns], errors='ignore')
-cte_data_filtered = cte_data.drop(columns=[col for col in columns_to_exclude if col in cte_data.columns], errors='ignore')
+# Balance the dataset using SMOTE
+smote = SMOTE(random_state=42)
+X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
 
-# Find similar biomarkers (intersection of columns)
-similar_biomarkers = set(ad_data_filtered.columns).intersection(set(cte_data_filtered.columns))
-similar_biomarkers_list = list(similar_biomarkers)
+# Train the Random Forest model on the balanced dataset
+rf_model_balanced = RandomForestClassifier(random_state=42, n_estimators=100)
+rf_model_balanced.fit(X_resampled, y_resampled)
 
-# Extract all values for the similar biomarkers and add a "Dataset" column
-ad_values = ad_data_filtered[similar_biomarkers_list].copy()
-ad_values["Dataset"] = "AD"
-
-cte_values = cte_data_filtered[similar_biomarkers_list].copy()
-cte_values["Dataset"] = "CTE"
-
-# Combine the data
-combined_values = pd.concat([ad_values, cte_values], ignore_index=True)
-
-# Encode target variable and split data
-X = combined_values[similar_biomarkers_list]
-y = combined_values["Dataset"]
-label_encoder = LabelEncoder()
-y_encoded = label_encoder.fit_transform(y)  # Encode 'AD' as 0, 'CTE' as 1
-
-# Train/test split
-X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42)
-
-# Train Random Forest model
-rf_model = RandomForestClassifier(random_state=42, n_estimators=100)
-rf_model.fit(X_train, y_train)
-
-# Predict on test data
-y_pred = rf_model.predict(X_test)
+# Make predictions on the test set
+y_pred_balanced = rf_model_balanced.predict(X_test)
+y_pred_proba = rf_model_balanced.predict_proba(X_test)[:, 1]  # Probabilities for ROC-AUC
 
 # Evaluate the model
-print("Classification Report:\n", classification_report(y_test, y_pred))
-print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
-print("Accuracy Score:", accuracy_score(y_test, y_pred))
+accuracy_balanced = accuracy_score(y_test, y_pred_balanced)
+roc_auc = roc_auc_score(y_test, y_pred_proba)
+# Generate and print the classification report with target names
+report_balanced = classification_report(
+    y_test,
+    y_pred_balanced,
+    target_names=['AD', 'CTE']
+)
+
+print("\nClassification Report:")
+print(report_balanced)
+
+print(f"Balanced Model Accuracy: {accuracy_balanced:.2f}")
+print(f"ROC-AUC Score: {roc_auc:.2f}")
+
+# Get feature importances from the trained Random Forest model
+feature_importances = rf_model_balanced.feature_importances_
+
+# Create a DataFrame to map features to their importance scores
+feature_importance_df = pd.DataFrame({
+    'Feature': X.columns,
+    'Importance': feature_importances
+})
+
+# Sort the features by importance in descending order
+feature_importance_df = feature_importance_df.sort_values(by='Importance', ascending=False)
+
+# Display the top 10 features
+top_10_features = feature_importance_df.head(10)
+print("\nTop 10 Features by Importance:")
+print(top_10_features)
+
 
 
