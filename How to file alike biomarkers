@@ -7,6 +7,7 @@ cte_file_path = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomar
 ad_data = pd.read_csv(ad_file_path)
 cte_data = pd.read_csv(cte_file_path)
 
+
 # Define columns to exclude but keep SubjectID
 columns_to_exclude = ['Source', 'label', 'Dataset']  # Removed 'SubjectID' from the exclusion list
 ad_data_filtered = ad_data.drop(columns=[col for col in columns_to_exclude if col in ad_data.columns], errors='ignore')
@@ -20,6 +21,9 @@ similar_biomarkers_list = list(similar_biomarkers)
 if 'SubjectID' in ad_data.columns:
     similar_biomarkers_list.append('SubjectID')
 
+# Remove duplicates from the list
+similar_biomarkers_list = list(set(similar_biomarkers_list))
+
 # Extract all values for the similar biomarkers and add a "Dataset" column
 ad_values = ad_data_filtered[similar_biomarkers_list].copy()
 ad_values["Dataset"] = "AD"  # Add dataset identifier
@@ -28,6 +32,13 @@ cte_values["Dataset"] = "CTE"  # Add dataset identifier
 
 # Combine the data for similar biomarkers
 combined_values = pd.concat([ad_values, cte_values], ignore_index=True)
+# Remove the 'Dataset' column
+if 'Dataset' in combined_values.columns:
+    combined_values = combined_values.drop(columns=['Dataset'])
+# Reorder columns to make 'SubjectID' the first column, if it exists
+if 'SubjectID' in combined_values.columns:
+    columns = ['SubjectID'] + [col for col in combined_values.columns if col != 'SubjectID']
+    combined_values = combined_values[columns]
 
 # Save the results to the specified directory
 output_dir = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers"
