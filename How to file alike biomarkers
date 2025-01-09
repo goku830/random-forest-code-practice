@@ -4,12 +4,11 @@ import os
 # Load the datasets
 ad_file_path = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers\AD_combined_filtered_species.csv"
 cte_file_path = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers\CTE_combined_filtered_species.csv"
-
 ad_data = pd.read_csv(ad_file_path)
 cte_data = pd.read_csv(cte_file_path)
 
-# Exclude 'Source', 'label', 'SubjectID', and 'Dataset' columns from both datasets if they exist
-columns_to_exclude = ['Source', 'label', 'SubjectID']
+# Define columns to exclude but keep SubjectID
+columns_to_exclude = ['Source', 'label', 'Dataset']  # Removed 'SubjectID' from the exclusion list
 ad_data_filtered = ad_data.drop(columns=[col for col in columns_to_exclude if col in ad_data.columns], errors='ignore')
 cte_data_filtered = cte_data.drop(columns=[col for col in columns_to_exclude if col in cte_data.columns], errors='ignore')
 
@@ -17,10 +16,13 @@ cte_data_filtered = cte_data.drop(columns=[col for col in columns_to_exclude if 
 similar_biomarkers = set(ad_data_filtered.columns).intersection(set(cte_data_filtered.columns))
 similar_biomarkers_list = list(similar_biomarkers)
 
+# Ensure 'SubjectID' is included in the combined dataset
+if 'SubjectID' in ad_data.columns:
+    similar_biomarkers_list.append('SubjectID')
+
 # Extract all values for the similar biomarkers and add a "Dataset" column
 ad_values = ad_data_filtered[similar_biomarkers_list].copy()
 ad_values["Dataset"] = "AD"  # Add dataset identifier
-
 cte_values = cte_data_filtered[similar_biomarkers_list].copy()
 cte_values["Dataset"] = "CTE"  # Add dataset identifier
 
@@ -29,12 +31,11 @@ combined_values = pd.concat([ad_values, cte_values], ignore_index=True)
 
 # Save the results to the specified directory
 output_dir = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers"
-output_file = os.path.join(output_dir, "biomarker_all_values_comparison.csv")
+output_file = os.path.join(output_dir, "biomarker_all_values_comparison_with_subject_id.csv")
 
 # Ensure the directory exists
 os.makedirs(output_dir, exist_ok=True)
 
 # Save to CSV
 combined_values.to_csv(output_file, index=False)
-
-print(f"Shared biomarkers saved to: {output_file}")
+print(f"Shared biomarkers with SubjectID saved to: {output_file}")
