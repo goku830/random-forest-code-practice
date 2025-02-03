@@ -1,0 +1,82 @@
+# Normalize feature matrix
+scaler = MinMaxScaler()
+X_normalized = scaler.fit_transform(X)
+
+# Extract sample IDs based on condition labels
+group_mapping = {0: "HC", 1: "CTE", 2: "AD", 3: "PD"}
+data['Group'] = data['label'].map(group_mapping)
+
+# Get subject IDs for each condition
+group_samples = {name: data[data["Group"] == name]["SubjectID"].values for name in group_mapping.values()}
+
+# Debugging: Print sample counts
+for group, samples in group_samples.items():
+    print(f"Number of {group} samples: {len(samples)}")
+
+# Ensure the order of sample IDs matches the normalized matrix
+sample_ids = data["SubjectID"].values  # All subject IDs
+
+# Compute Bray-Curtis beta diversity
+beta_div = beta_diversity("braycurtis", X_normalized, ids=sample_ids)
+beta_div_df = beta_div.to_data_frame()
+
+# Define all unique group comparisons (no duplicates)
+group_pairs = [(g1, g2) for g1, g2 in product(group_mapping.values(), repeat=2) if g1 < g2]
+
+# Store the results
+most_similar_pairs = []
+most_dissimilar_pairs = []
+
+for group1_name, group2_name in group_pairs:
+    group1_samples = group_samples[group1_name]
+    group2_samples = group_samples[group2_name]
+
+    # Generate all pairwise comparisons for this group combination
+    pairs = list(product(group1_samples, group2_samples))
+
+    # Extract valid distances
+    distances = [(pair, beta_div_df.loc[pair]) for pair in pairs
+                 if pair[0] in beta_div_df.index and pair[1] in beta_div_df.columns]
+
+    if distances:
+        # Find most similar and most dissimilar pairs
+        most_similar = min(distances, key=lambda x: x[1])
+        most_dissimilar = max(distances, key=lambda x: x[1])
+
+        # Store results
+        most_similar_pairs.append((group1_name, group2_name, most_similar[0], most_similar[1]))
+        most_dissimilar_pairs.append((group1_name, group2_name, most_dissimilar[0], most_dissimilar[1]))
+    else:
+        print(f"Warning: No valid distances found for {group1_name} vs {group2_name}")
+
+# Display results
+print("\nMost Similar Pairs:")
+for g1, g2, pair, dist in most_similar_pairs:
+    print(f"{g1} vs. {g2}: {pair} with a Bray-Curtis distance of {dist:.4f}")
+
+print("\nMost Dissimilar Pairs:")
+for g1, g2, pair, dist in most_dissimilar_pairs:
+    print(f"{g1} vs. {g2}: {pair} with a Bray-Curtis distance of {dist:.4f}")
+
+# Visualization: Most Similar vs. Most Dissimilar Pairs
+plt.figure(figsize=(12, 5))
+
+# Create a DataFrame for plotting
+plot_data = pd.DataFrame({
+    "Group Pair": [f"{g1}-{g2}" for g1, g2, _, _ in most_similar_pairs] * 2,
+    "Bray-Curtis Distance": [dist for _, _, _, dist in most_similar_pairs] +
+                            [dist for _, _, _, dist in most_dissimilar_pairs],
+    "Category": ["Most Similar"] * len(most_similar_pairs) + ["Most Dissimilar"] * len(most_dissimilar_pairs)
+})
+
+# Use seaborn to plot without overlap
+sns.barplot(data=plot_data, x="Group Pair", y="Bray-Curtis Distance", hue="Category", dodge=True)
+
+# Formatting
+plt.ylabel("Bray-Curtis Distance")
+plt.xlabel("Group Pair")
+plt.title("Most Similar & Dissimilar Sample Pairs Across Conditions")
+plt.xticks(rotation=45)
+plt.ylim(0, 1)  # Bray-Curtis distance is between 0 and 1
+plt.legend()
+plt.show()
