@@ -1,0 +1,104 @@
+# Step 2: Define features, target, and groups
+X = data.drop(columns=['SubjectID', 'label'])  # Features (biomarkers)
+y = data['label']  # Target (0 = Healthy, 1 = CTE, 2 = AD, 3 = PD)
+groups = data['SubjectID']  # Grouping by subject ID
+
+# Step 3: Define disease groups
+disease_labels = {0: 'Healthy', 1: 'CTE', 2: 'AD', 3: 'PD'}
+data['Health_Status'] = data['label'].map(disease_labels)
+
+# Step 4: Function to Compute Similarity/Dissimilarity for Healthy vs. Each Disease
+def analyze_healthy_vs_disease(disease_label, disease_name):
+    # Extract data for Healthy and the specific disease
+    disease_data = data[data['label'].isin([0, disease_label])]  # Filter only Healthy and the specific disease
+
+    # Compute mean biomarker values for each group (Healthy vs Disease)
+    group_means = X.loc[disease_data.index].groupby(disease_data['Health_Status']).mean()
+
+    # Compute Bray-Curtis distances between biomarkers
+    biomarker_distances = squareform(pdist(group_means.T, metric='braycurtis'))  # Transpose to compare biomarkers
+
+    # Convert distance matrix to DataFrame
+    biomarker_names = group_means.columns
+    distance_df = pd.DataFrame(biomarker_distances, index=biomarker_names, columns=biomarker_names)
+
+    # Remove self-comparisons (diagonal values = 0)
+    np.fill_diagonal(distance_df.values, np.nan)
+
+    # Find the most similar & dissimilar biomarkers
+    most_similar = distance_df.stack().idxmin()
+    most_similar_value = distance_df.stack().min()
+
+    most_dissimilar = distance_df.stack().idxmax()
+    most_dissimilar_value = distance_df.stack().max()
+
+    # Print results
+    print(f"\nMost Shared Biomarkers Between Healthy and {disease_name}:")
+    print(f"   {most_similar[0]} ↔ {most_similar[1]} (Bray-Curtis Distance: {most_similar_value:.4f})")
+
+    print(f"\n Most Dissimilar Biomarkers Between Healthy and {disease_name}:")
+    print(f"   {most_dissimilar[0]} ↔ {most_dissimilar[1]} (Bray-Curtis Distance: {most_dissimilar_value:.4f})")
+
+    # Box-and-Whisker Plots for Most Similar & Most Dissimilar Biomarkers
+    plt.figure(figsize=(10, 6))
+    sns.boxplot(data=disease_data, x='Health_Status', y=X[most_similar[0]], palette='Blues')
+    plt.title(f"Most Shared Biomarker: {most_similar[0]} (Healthy vs. {disease_name})")
+    plt.xlabel("Health Status")
+    plt.ylabel(most_similar[0])
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.show()
+
+    plt.figure(figsize=(10, 6))
+    sns.boxplot(data=disease_data, x='Health_Status', y=X[most_dissimilar[0]], palette='Reds')
+    plt.title(f"Most Dissimilar Biomarker: {most_dissimilar[0]} (Healthy vs. {disease_name})")
+    plt.xlabel("Health Status")
+    plt.ylabel(most_dissimilar[0])
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.show()
+
+# Step 5: Run Analysis for Each Disease vs. Healthy
+analyze_healthy_vs_disease(2, "AD")  # Healthy vs AD
+analyze_healthy_vs_disease(3, "PD")  # Healthy vs PD
+analyze_healthy_vs_disease(1, "CTE")  # Healthy vs CTE
+
+# Step 8: Find Overall Shared & Dissimilar Biomarkers Across All Conditions (Healthy, AD, PD, CTE)
+group_means_all = X.groupby(y).mean()
+
+# Compute Bray-Curtis distances for all conditions
+biomarker_distances_all = squareform(pdist(group_means_all.T, metric='braycurtis'))
+
+# Convert to DataFrame
+distance_df_all = pd.DataFrame(biomarker_distances_all, index=group_means_all.columns, columns=group_means_all.columns)
+
+# Remove self-comparisons
+np.fill_diagonal(distance_df_all.values, np.nan)
+
+# Find the most similar & dissimilar biomarkers across all conditions
+most_shared_overall = distance_df_all.stack().idxmin()
+most_shared_overall_value = distance_df_all.stack().min()
+
+most_dissimilar_overall = distance_df_all.stack().idxmax()
+most_dissimilar_overall_value = distance_df_all.stack().max()
+
+print("\n Overall Most Shared Biomarkers Across All Conditions:")
+print(f"   {most_shared_overall[0]} ↔ {most_shared_overall[1]} (Bray-Curtis Distance: {most_shared_overall_value:.4f})")
+
+print("\n Overall Most Dissimilar Biomarkers Across All Conditions:")
+print(f"   {most_dissimilar_overall[0]} ↔ {most_dissimilar_overall[1]} (Bray-Curtis Distance: {most_dissimilar_overall_value:.4f})")
+
+# Step 9: Box-and-Whisker Plots for Overall Shared & Overall Dissimilar Biomarkers
+plt.figure(figsize=(10, 6))
+sns.boxplot(x=y, y=X[most_shared_overall[0]], palette='Blues')
+plt.title(f"Overall Most Shared Biomarker: {most_shared_overall[0]}")
+plt.xlabel("Condition (0=Healthy, 1=CTE, 2=AD, 3=PD)")
+plt.ylabel(most_shared_overall[0])
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.show()
+
+plt.figure(figsize=(10, 6))
+sns.boxplot(x=y, y=X[most_dissimilar_overall[0]], palette='Reds')
+plt.title(f"Overall Most Dissimilar Biomarker: {most_dissimilar_overall[0]}")
+plt.xlabel("Condition (0=Healthy, 1=CTE, 2=AD, 3=PD)")
+plt.ylabel(most_dissimilar_overall[0])
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.show()
