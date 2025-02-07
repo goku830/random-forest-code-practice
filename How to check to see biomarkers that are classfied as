@@ -1,0 +1,24 @@
+# Add predicted and true labels to the original dataset
+data['True_Label'] = y_true
+data['Predicted_Label'] = y_pred
+healthy_as_ad = data[(data['True_Label'] == 0) & (data['Predicted_Label'] == 2)]
+
+# Filter samples where AD (2) was misclassified as Healthy (0)
+ad_as_healthy = data[(data['True_Label'] == 2) & (data['Predicted_Label'] == 0)]
+
+# Filter samples where AD (2) was correctly classified
+ad_correct = data[(data['True_Label'] == 2) & (data['Predicted_Label'] == 2)]
+
+# Save these filtered datasets for further analysis
+output_dir = r"C:\Users\brand\Desktop\PyCharm Community Edition 2024.3\Biomarkers"
+ad_as_healthy_file = os.path.join(output_dir, "AD_misclassified_as_Healthy.csv")
+ad_correct_file = os.path.join(output_dir, "AD_correctly_classified.csv")
+healthy_as_ad_file = os.path.join(output_dir, "Healthy_classifed_AD.csv")
+
+ad_as_healthy.to_csv(ad_as_healthy_file, index=False)
+ad_correct.to_csv(ad_correct_file, index=False)
+healthy_as_ad.to_csv(healthy_as_ad_file, index=False)
+
+print(f"AD misclassified as Healthy saved to: {ad_as_healthy_file}")
+print(f"Correctly classified AD samples saved to: {ad_correct_file}")
+print(f"Healthy classified as AD samples saved to: {healthy_as_ad_file}")
